@@ -1,0 +1,21 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Environment Variables
+backend/.env
+
+# Backend Database / ChromaDB
+# (CRITICAL: Do not commit the vectorstore as it will become gigabytes large)
+backend/data/
+
+# Frontend (React / Vite)
+frontend/node_modules/
+frontend/dist/
+frontend/.eslintcache
+
+# OS Files
+.DS_Store
+Thumbs.db
