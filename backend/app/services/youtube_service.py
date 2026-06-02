@@ -473,7 +473,7 @@ def _build_video_data(
         duration_seconds=raw_duration,
         duration_formatted=_format_duration(raw_duration) if raw_duration else None,
         thumbnail_url=thumbnail,
-        language=meta.get("language") or meta.get("subtitles", {}) and None,
+        language=meta.get("language"),
 
         # ── Engagement ───────────────────────────────────────────────────────
         views=meta.get("view_count"),
