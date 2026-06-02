@@ -125,6 +125,18 @@ def _build_ydl_opts(output_dir: str, shortcode: str) -> dict[str, Any]:
 
     # Optional: supply Instagram cookies for private / age-restricted content
     cookies_file = os.getenv("INSTAGRAM_COOKIES_FILE")
+    if not cookies_file or not Path(cookies_file).is_file():
+        # Fallback check for the unified cookies file
+        possible_paths = [
+            "backend/cookies.txt",
+            "cookies.txt",
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "../../cookies.txt"))
+        ]
+        for path in possible_paths:
+            if os.path.isfile(path):
+                cookies_file = path
+                break
+
     if cookies_file and Path(cookies_file).is_file():
         opts["cookiefile"] = cookies_file
         logger.debug("Using Instagram cookies from: %s", cookies_file)

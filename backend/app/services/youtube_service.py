@@ -113,9 +113,24 @@ _YDL_AUDIO_OPTS_TEMPLATE: dict[str, Any] = {
     "no_warnings": True,
     # Download best audio stream — no video
     "format":      "bestaudio/best",
-    # Write the file to a caller-specified path; %(ext)s will be filled in
+# Write the file to a caller-specified path; %(ext)s will be filled in
     # 'outtmpl' is set dynamically per request
 }
+
+def _inject_cookies(opts: dict[str, Any]) -> dict[str, Any]:
+    """Inject cookies file into yt-dlp options if it exists."""
+    opts_copy = dict(opts)
+    # Check for backend/cookies.txt relative to the project root or current dir
+    possible_paths = [
+        "backend/cookies.txt",
+        "cookies.txt",
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../cookies.txt"))
+    ]
+    for path in possible_paths:
+        if os.path.isfile(path):
+            opts_copy["cookiefile"] = path
+            break
+    return opts_copy
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -248,7 +263,7 @@ def _fetch_metadata(url: str) -> dict[str, Any]:
     
     # 1. Try yt-dlp for rich metadata (views, likes, comments)
     try:
-        with yt_dlp.YoutubeDL(_YDL_META_OPTS) as ydl:
+        with yt_dlp.YoutubeDL(_inject_cookies(_YDL_META_OPTS)) as ydl:
             meta = ydl.extract_info(url, download=False) or {}
     except Exception as exc:
         logger.warning("yt-dlp blocked or failed to fetch metadata: %s", exc)
@@ -357,7 +372,7 @@ def _transcribe_with_whisper(video_id: str, url: str) -> tuple[str, TranscriptSo
             "outtmpl": os.path.join(tmpdir, f"{video_id}.%(ext)s"),
         }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(_inject_cookies(ydl_opts)) as ydl:
             info = ydl.extract_info(url, download=True)
             # Determine the actual downloaded file path
             ext = info.get("ext", "webm")

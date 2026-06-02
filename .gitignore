@@ -6,6 +6,7 @@ __pycache__/
 
 # Environment Variables
 backend/.env
+backend/cookies.txt
 
 # Backend Database / ChromaDB
 # (CRITICAL: Do not commit the vectorstore as it will become gigabytes large)
