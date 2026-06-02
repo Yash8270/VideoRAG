@@ -76,7 +76,6 @@ const ChatPanel = () => {
             </div>
           </div>
         )}
-        )}
       </div>
 
       {/* Input Area */}
