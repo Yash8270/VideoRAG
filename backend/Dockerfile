@@ -21,4 +21,5 @@ COPY . .
 # Expose port 10000 (Render's default port)
 EXPOSE 10000
 
+# Start FastAPI using Uvicorn (uses shell syntax to read Render's PORT environment variable)
 CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}
