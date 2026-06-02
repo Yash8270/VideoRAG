@@ -44,16 +44,17 @@ async def lifespan(app: FastAPI):
     logger.info("Debug mode: %s", _settings.DEBUG)
 
     # ── ChromaDB ─────────────────────────────────────────────────────────────
-    try:
-        col = get_collection()
-        logger.info(
-            "ChromaDB ready — collection '%s' (%d docs indexed)",
-            _settings.CHROMA_COLLECTION_NAME,
-            col.count(),
-        )
-    except Exception as exc:
-        logger.error("ChromaDB warm-up failed: %s", exc)
-        logger.warning("Continuing startup — ChromaDB will be retried on first request.")
+    # Disabled for Render Free Tier to prevent OOM on startup
+    # try:
+    #     col = get_collection()
+    #     logger.info(
+    #         "ChromaDB ready — collection '%s' (%d docs indexed)",
+    #         _settings.CHROMA_COLLECTION_NAME,
+    #         col.count(),
+    #     )
+    # except Exception as exc:
+    #     logger.error("ChromaDB warm-up failed: %s", exc)
+    #     logger.warning("Continuing startup — ChromaDB will be retried on first request.")
 
     # ── faster-whisper — preload model to avoid first-request cold start ──────
     # Disabled for Render Free Tier to prevent Out of Memory (OOM) crash on startup
