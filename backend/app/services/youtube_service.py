@@ -130,7 +130,12 @@ def _inject_cookies(opts: dict[str, Any]) -> dict[str, Any]:
     for path in possible_paths:
         if os.path.isfile(path):
             opts_copy["cookiefile"] = path
+            logger.info("yt-dlp: Injecting cookies from %s", path)
             break
+    
+    if "cookiefile" not in opts_copy:
+        logger.warning("yt-dlp: No cookies.txt found in any of the expected paths.")
+        
     return opts_copy
 
 
