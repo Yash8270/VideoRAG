@@ -124,6 +124,7 @@ def _inject_cookies(opts: dict[str, Any]) -> dict[str, Any]:
     possible_paths = [
         "backend/cookies.txt",
         "cookies.txt",
+        "/etc/secrets/cookies.txt",
         os.path.abspath(os.path.join(os.path.dirname(__file__), "../../cookies.txt"))
     ]
     for path in possible_paths:

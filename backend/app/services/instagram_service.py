@@ -130,6 +130,7 @@ def _build_ydl_opts(output_dir: str, shortcode: str) -> dict[str, Any]:
         possible_paths = [
             "backend/cookies.txt",
             "cookies.txt",
+            "/etc/secrets/cookies.txt",
             os.path.abspath(os.path.join(os.path.dirname(__file__), "../../cookies.txt"))
         ]
         for path in possible_paths:
