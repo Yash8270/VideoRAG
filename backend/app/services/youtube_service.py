@@ -23,6 +23,9 @@ import os
 import re
 import shutil
 import tempfile
+import json
+import urllib.parse
+import urllib.request
 from enum import Enum
 from typing import Any, Optional
 
@@ -219,20 +222,44 @@ def _best_thumbnail(thumbnails: list[dict]) -> Optional[str]:
     return thumbnails[-1].get("url")
 
 
+def _fetch_oembed_metadata(url: str) -> dict[str, Any]:
+    """Fetch basic metadata from YouTube's official oEmbed API to bypass bot blockers."""
+    oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url)}&format=json"
+    try:
+        req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        with urllib.request.urlopen(req, timeout=5) as response:
+            data = json.loads(response.read())
+            return {
+                "title": data.get("title", "Unknown Title"),
+                "uploader": data.get("author_name", "Unknown Creator"),
+                "thumbnail": data.get("thumbnail_url"),
+            }
+    except Exception as exc:
+        logger.warning("oEmbed fallback failed: %s", exc)
+        return {}
+
 def _fetch_metadata(url: str) -> dict[str, Any]:
     """
-    Pull all video metadata via yt-dlp (no download).
-
-    Raises:
-        RuntimeError: If yt-dlp cannot access the video.
+    Pull video metadata. Try yt-dlp first. If blocked by YouTube's anti-bot,
+    fallback to oEmbed to gracefully degrade instead of crashing.
     """
     logger.debug("yt-dlp fetching metadata for: %s", url)
+    meta = {}
+    
+    # 1. Try yt-dlp for rich metadata (views, likes, comments)
     try:
         with yt_dlp.YoutubeDL(_YDL_META_OPTS) as ydl:
-            info = ydl.extract_info(url, download=False)
-        return info or {}
-    except yt_dlp.utils.DownloadError as exc:
-        raise RuntimeError(f"yt-dlp failed to fetch metadata: {exc}") from exc
+            meta = ydl.extract_info(url, download=False) or {}
+    except Exception as exc:
+        logger.warning("yt-dlp blocked or failed to fetch metadata: %s", exc)
+        
+    # 2. If yt-dlp completely failed (no title), fallback to oEmbed
+    if not meta.get("title"):
+        logger.info("Falling back to YouTube oEmbed API for core metadata...")
+        fallback_meta = _fetch_oembed_metadata(url)
+        meta.update(fallback_meta)
+        
+    return meta
 
 
 def _fetch_transcript_api(video_id: str) -> tuple[str, TranscriptSource]:
