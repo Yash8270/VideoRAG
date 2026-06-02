@@ -56,11 +56,12 @@ async def lifespan(app: FastAPI):
         logger.warning("Continuing startup — ChromaDB will be retried on first request.")
 
     # ── faster-whisper — preload model to avoid first-request cold start ──────
-    try:
-        await preload_whisper()
-    except Exception as exc:
-        logger.error("Whisper model preload failed: %s", exc)
-        logger.warning("Whisper will be loaded on first transcription request.")
+    # Disabled for Render Free Tier to prevent Out of Memory (OOM) crash on startup
+    # try:
+    #     await preload_whisper()
+    # except Exception as exc:
+    #     logger.error("Whisper model preload failed: %s", exc)
+    logger.warning("Whisper will be loaded on first transcription request.")
 
     yield  # ← application runs here
 
