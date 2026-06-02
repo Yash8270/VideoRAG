@@ -50,8 +50,12 @@ async def analyze_videos(request: AnalyzeRequest) -> ComparisonSummary:
 
         if ig_data.audio_path:
             logger.info("Transcribing Instagram audio via faster-whisper...")
-            segments = await transcribe(ig_data.audio_path)
-            ig_data.transcript = segments_to_json(segments)
+            try:
+                segments = await transcribe(ig_data.audio_path)
+                ig_data.transcript = segments_to_json(segments)
+            except Exception as exc:
+                logger.warning("Failed to transcribe Instagram audio (might be silent/corrupted): %s", exc)
+                ig_data.transcript = None
 
         # 3. Analytics & Engagement Calculation
         logger.info("Computing engagement analytics...")

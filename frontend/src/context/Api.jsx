@@ -3,7 +3,8 @@ import VideoContext from './VideoContext';
 
 const Api = (props) => {
   // Use VITE_API_URL from environment when deployed, fallback to localhost for development
-  const host = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+  // const host = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+  const host = "https://videorag-85s0.onrender.com/api/v1";
 
   // Global Application State
   const [analysisData, setAnalysisData] = useState(null);
