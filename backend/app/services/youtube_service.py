@@ -275,12 +275,14 @@ def _fetch_transcript_api(video_id: str) -> tuple[str, TranscriptSource]:
     Returns:
         (raw_transcript_text, TranscriptSource)
     """
-    api = YouTubeTranscriptApi()
+    pass
 
     # ── Attempt 1: English manual captions ───────────────────────────────────
     try:
-        fetched = api.fetch(video_id, languages=["en", "en-US", "en-GB", "en-CA"])
-        text = " ".join(snip.text for snip in fetched)
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript = transcript_list.find_transcript(["en", "en-US", "en-GB", "en-CA"])
+        fetched = transcript.fetch()
+        text = " ".join(snip.get("text", "") for snip in fetched)
         if text.strip():
             logger.info("Transcript obtained via manual captions [%s]", video_id)
             return text, TranscriptSource.MANUAL
@@ -294,12 +296,12 @@ def _fetch_transcript_api(video_id: str) -> tuple[str, TranscriptSource]:
 
     # ── Attempt 2: Any manual caption (any language) ─────────────────────────
     try:
-        transcript_list = api.list(video_id)
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
         # Prefer manually created over auto-generated
         for t in transcript_list:
             if not t.is_generated:
                 fetched = t.fetch()
-                text = " ".join(snip.text for snip in fetched)
+                text = " ".join(snip.get("text", "") for snip in fetched)
                 if text.strip():
                     logger.info(
                         "Transcript obtained via manual captions [lang=%s] for %s",
@@ -311,11 +313,11 @@ def _fetch_transcript_api(video_id: str) -> tuple[str, TranscriptSource]:
 
     # ── Attempt 3: Auto-generated captions ───────────────────────────────────
     try:
-        transcript_list = api.list(video_id)
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
         for t in transcript_list:
             if t.is_generated:
                 fetched = t.fetch()
-                text = " ".join(snip.text for snip in fetched)
+                text = " ".join(snip.get("text", "") for snip in fetched)
                 if text.strip():
                     logger.info(
                         "Transcript obtained via auto-generated captions [lang=%s] for %s",

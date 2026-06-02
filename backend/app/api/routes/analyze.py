@@ -69,16 +69,33 @@ async def analyze_videos(request: AnalyzeRequest) -> ComparisonSummary:
         ig_chunks = chunk_from_instagram(ig_data)
 
         # 5 & 6. Embed and Store - YouTube
-        logger.info("Embedding and storing YouTube chunks...")
         if yt_chunks.chunks:
+            logger.info(
+                "YouTube Ingestion Summary | Transcript length: %d chars | Chunk count: %d", 
+                len(yt_data.transcript) if yt_data.transcript else 0, 
+                yt_chunks.total_chunks
+            )
             yt_embeddings = await embed_chunking_result(yt_chunks)
+            logger.info("YouTube Ingestion Summary | Embedding count: %d", len(yt_embeddings))
             insert_chunks(yt_chunks, embeddings=yt_embeddings)
+            logger.info("YouTube Ingestion Summary | Vector insertion count: %d", len(yt_embeddings))
+        else:
+            logger.warning("No YouTube chunks to embed/store.")
 
         # 5 & 6. Embed and Store - Instagram
-        logger.info("Embedding and storing Instagram chunks...")
         if ig_chunks.chunks:
+            transcript_len = len(ig_data.transcript) if isinstance(ig_data.transcript, str) else len(str(ig_data.transcript))
+            logger.info(
+                "Instagram Ingestion Summary | Transcript length: %d chars | Chunk count: %d", 
+                transcript_len, 
+                ig_chunks.total_chunks
+            )
             ig_embeddings = await embed_chunking_result(ig_chunks)
+            logger.info("Instagram Ingestion Summary | Embedding count: %d", len(ig_embeddings))
             insert_chunks(ig_chunks, embeddings=ig_embeddings)
+            logger.info("Instagram Ingestion Summary | Vector insertion count: %d", len(ig_embeddings))
+        else:
+            logger.warning("No Instagram chunks to embed/store.")
 
         logger.info("Pipeline completed successfully!")
         return comparison
