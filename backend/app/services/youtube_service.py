@@ -31,6 +31,8 @@ from typing import Any, Optional
 
 import yt_dlp
 from faster_whisper import WhisperModel
+from googleapiclient.discovery import build as google_build
+from googleapiclient.errors import HttpError
 from youtube_transcript_api import (
     NoTranscriptFound,
     TranscriptsDisabled,
@@ -38,6 +40,7 @@ from youtube_transcript_api import (
 )
 from pydantic import BaseModel, Field
 
+from app.core.config import get_settings
 from app.utils.logger import get_logger
 from app.utils.text_cleaner import clean_transcript
 
@@ -81,6 +84,7 @@ class YouTubeVideoData(BaseModel):
     views:              Optional[int]   = Field(None, description="View count")
     likes:              Optional[int]   = Field(None, description="Like count")
     comments:           Optional[int]   = Field(None, description="Comment count")
+    follower_count:     Optional[int]   = Field(None, description="Channel subscriber count")
 
     # ── Taxonomy ─────────────────────────────────────────────────────────────
     tags:               list[str]       = Field(default_factory=list)
@@ -93,7 +97,7 @@ class YouTubeVideoData(BaseModel):
     # ── Raw payload ──────────────────────────────────────────────────────────
     raw_metadata: dict[str, Any] = Field(
         default_factory=dict,
-        description="Selected raw fields from yt-dlp for downstream use",
+        description="Selected raw fields from YouTube Data API v3 for downstream use",
     )
 
 
@@ -259,33 +263,142 @@ def _fetch_oembed_metadata(url: str) -> dict[str, Any]:
         logger.warning("oEmbed fallback failed: %s", exc)
         return {}
 
-def _fetch_metadata(url: str) -> dict[str, Any]:
+def _iso8601_duration_to_seconds(duration: str) -> Optional[int]:
     """
-    Pull video metadata. Try yt-dlp first. If blocked by YouTube's anti-bot,
-    fallback to oEmbed to gracefully degrade instead of crashing.
+    Convert ISO 8601 duration string (e.g. 'PT1M30S') to total seconds.
+    Returns None if parsing fails.
     """
-    logger.debug("yt-dlp fetching metadata for: %s", url)
-    meta = {}
-    
-    # 1. Try yt-dlp for rich metadata (views, likes, comments)
+    if not duration:
+        return None
     try:
-        with yt_dlp.YoutubeDL(_inject_cookies(_YDL_META_OPTS)) as ydl:
-            meta = ydl.extract_info(url, download=False) or {}
-    except Exception as exc:
-        logger.warning("yt-dlp blocked or failed to fetch metadata: %s", exc)
-        
-    # 2. If yt-dlp completely failed (no title), fallback to oEmbed
+        pattern = re.compile(
+            r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+        )
+        m = pattern.fullmatch(duration)
+        if not m:
+            return None
+        hours   = int(m.group(1) or 0)
+        minutes = int(m.group(2) or 0)
+        seconds = int(m.group(3) or 0)
+        return hours * 3600 + minutes * 60 + seconds
+    except Exception:
+        return None
+
+
+def _fetch_metadata(video_id: str) -> dict[str, Any]:
+    """
+    Fetch rich video metadata using the official YouTube Data API v3.
+    Falls back to oEmbed if the API key is missing or the call fails.
+
+    Returns a normalised dict with the same key names used downstream
+    so _build_video_data() requires no changes.
+    """
+    api_key = get_settings().YOUTUBE_API_KEY
+    meta: dict[str, Any] = {}
+
+    print("------------------API----------------: ", api_key)
+
+    # ── 1. YouTube Data API v3 ────────────────────────────────────────────────
+    if api_key:
+        try:
+            youtube = google_build("youtube", "v3", developerKey=api_key)
+
+            # --- videos().list ---
+            video_resp = (
+                youtube.videos()
+                .list(
+                    part="snippet,statistics,contentDetails",
+                    id=video_id,
+                )
+                .execute()
+            )
+
+            items = video_resp.get("items", [])
+            if not items:
+                logger.warning("YouTube Data API returned no items for video_id=%s", video_id)
+            else:
+                item      = items[0]
+                snippet   = item.get("snippet", {})
+                stats     = item.get("statistics", {})
+                content   = item.get("contentDetails", {})
+                channel_id = snippet.get("channelId")
+
+                # Thumbnail: pick maxres → high → medium → default
+                thumbs    = snippet.get("thumbnails", {})
+                thumbnail = (
+                    thumbs.get("maxres", {})
+                    or thumbs.get("high", {})
+                    or thumbs.get("medium", {})
+                    or thumbs.get("default", {})
+                ).get("url")
+
+                meta = {
+                    "title":         snippet.get("title", "Unknown Title"),
+                    "uploader":      snippet.get("channelTitle", "Unknown Creator"),
+                    "channel_id":    channel_id,
+                    "channel_url":   f"https://www.youtube.com/channel/{channel_id}" if channel_id else None,
+                    "description":   snippet.get("description"),
+                    "upload_date":   snippet.get("publishedAt", "")[:10].replace("-", ""),  # YYYYMMDD
+                    "duration":      _iso8601_duration_to_seconds(content.get("duration")),
+                    "thumbnail":     thumbnail,
+                    "tags":          snippet.get("tags") or [],
+                    "categories":    [],   # category IDs would need a second call; skip for now
+                    "language":      snippet.get("defaultAudioLanguage") or snippet.get("defaultLanguage"),
+                    "webpage_url":   f"https://www.youtube.com/watch?v={video_id}",
+                    "view_count":    int(stats["viewCount"])    if stats.get("viewCount")    else None,
+                    "like_count":    int(stats["likeCount"])    if stats.get("likeCount")    else None,
+                    "comment_count": int(stats["commentCount"]) if stats.get("commentCount") else None,
+                    "age_limit":     None,
+                    "is_live":       snippet.get("liveBroadcastContent") == "live",
+                    "availability":  "public",
+                }
+
+                logger.info(
+                    "YouTube Data API: fetched metadata for %s | title='%s'",
+                    video_id, meta["title"],
+                )
+
+                # --- channels().list (subscriber count) ---
+                if channel_id:
+                    try:
+                        ch_resp = (
+                            youtube.channels()
+                            .list(part="statistics", id=channel_id)
+                            .execute()
+                        )
+                        ch_items = ch_resp.get("items", [])
+                        if ch_items:
+                            ch_stats = ch_items[0].get("statistics", {})
+                            sub_count = ch_stats.get("subscriberCount")
+                            meta["subscriber_count"] = int(sub_count) if sub_count else None
+                            logger.info(
+                                "YouTube Data API: channel subscriber_count=%s",
+                                meta["subscriber_count"],
+                            )
+                    except Exception as exc:
+                        logger.warning("Failed to fetch channel subscriber count: %s", exc)
+                        meta["subscriber_count"] = None
+
+        except HttpError as exc:
+            logger.warning("YouTube Data API HttpError: %s", exc)
+        except Exception as exc:
+            logger.warning("YouTube Data API failed: %s", exc)
+    else:
+        logger.warning("YOUTUBE_API_KEY not set — skipping Data API metadata fetch.")
+
+    # ── 2. oEmbed fallback if API call yielded nothing ────────────────────────
     if not meta.get("title"):
+        url = f"https://www.youtube.com/watch?v={video_id}"
         logger.info("Falling back to YouTube oEmbed API for core metadata...")
-        fallback_meta = _fetch_oembed_metadata(url)
-        meta.update(fallback_meta)
-        
+        fallback = _fetch_oembed_metadata(url)
+        meta.update(fallback)
+
     return meta
 
 
 def _fetch_transcript_api(video_id: str) -> tuple[str, TranscriptSource]:
     """
-    Attempt to fetch transcript via youtube-transcript-api 1.x.
+    Attempt to fetch transcript via youtube-transcript-api.
 
     Strategy:
       1. Fetch English manual captions  → TranscriptSource.MANUAL
@@ -296,11 +409,9 @@ def _fetch_transcript_api(video_id: str) -> tuple[str, TranscriptSource]:
     Returns:
         (raw_transcript_text, TranscriptSource)
     """
-    pass
-
     # ── Attempt 1: English manual captions ───────────────────────────────────
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript_list = YouTubeTranscriptApi.list(video_id)
         transcript = transcript_list.find_transcript(["en", "en-US", "en-GB", "en-CA"])
         fetched = transcript.fetch()
         text = " ".join(snip.get("text", "") for snip in fetched)
@@ -317,8 +428,7 @@ def _fetch_transcript_api(video_id: str) -> tuple[str, TranscriptSource]:
 
     # ── Attempt 2: Any manual caption (any language) ─────────────────────────
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-        # Prefer manually created over auto-generated
+        transcript_list = YouTubeTranscriptApi.list(video_id)
         for t in transcript_list:
             if not t.is_generated:
                 fetched = t.fetch()
@@ -334,7 +444,7 @@ def _fetch_transcript_api(video_id: str) -> tuple[str, TranscriptSource]:
 
     # ── Attempt 3: Auto-generated captions ───────────────────────────────────
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        transcript_list = YouTubeTranscriptApi.list(video_id)
         for t in transcript_list:
             if t.is_generated:
                 fetched = t.fetch()
@@ -468,9 +578,8 @@ def _build_video_data(
     """
     raw_duration: Optional[int] = meta.get("duration")
 
-    # Select the best quality thumbnail
-    thumbnails = meta.get("thumbnails") or []
-    thumbnail  = _best_thumbnail(thumbnails) or meta.get("thumbnail")
+    # YouTube Data API v3 returns a single thumbnail URL string directly
+    thumbnail = meta.get("thumbnail")
 
     # yt-dlp comment count may be in 'comment_count' or nested
     comment_count: Optional[int] = (
@@ -502,6 +611,7 @@ def _build_video_data(
         views=meta.get("view_count"),
         likes=meta.get("like_count"),
         comments=comment_count,
+        follower_count=meta.get("subscriber_count"),
 
         # ── Taxonomy ─────────────────────────────────────────────────────────
         tags=meta.get("tags") or [],
@@ -513,18 +623,19 @@ def _build_video_data(
 
         # ── Raw payload (key fields only — avoid bloating the response) ──────
         raw_metadata={
-            "video_id":      video_id,
-            "channel_id":    meta.get("channel_id"),
-            "channel_url":   meta.get("channel_url"),
-            "webpage_url":   meta.get("webpage_url"),
-            "upload_date":   meta.get("upload_date"),
-            "duration":      raw_duration,
-            "view_count":    meta.get("view_count"),
-            "like_count":    meta.get("like_count"),
-            "comment_count": comment_count,
-            "age_limit":     meta.get("age_limit"),
-            "is_live":       meta.get("is_live"),
-            "availability":  meta.get("availability"),
+            "video_id":         video_id,
+            "channel_id":       meta.get("channel_id"),
+            "channel_url":      meta.get("channel_url"),
+            "webpage_url":      meta.get("webpage_url"),
+            "upload_date":      meta.get("upload_date"),
+            "duration":         raw_duration,
+            "view_count":       meta.get("view_count"),
+            "like_count":       meta.get("like_count"),
+            "comment_count":    comment_count,
+            "subscriber_count": meta.get("subscriber_count"),
+            "age_limit":        meta.get("age_limit"),
+            "is_live":          meta.get("is_live"),
+            "availability":     meta.get("availability"),
         },
     )
 
@@ -559,7 +670,7 @@ async def extract_youtube(url: str) -> YouTubeVideoData:
 
     # ── Step 2 & 3: Metadata + Transcript in parallel ────────────────────────
     # Both are blocking — run concurrently in separate threads
-    meta_task       = asyncio.to_thread(_fetch_metadata, url)
+    meta_task       = asyncio.to_thread(_fetch_metadata, video_id)
     transcript_task = asyncio.to_thread(_get_transcript, video_id, url)
 
     meta, (transcript, transcript_source) = await asyncio.gather(

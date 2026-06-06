@@ -1,6 +1,13 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Play, Heart, MessageCircle, Eye, Calendar, Clock } from 'lucide-react';
+import { Heart, MessageCircle, Eye, Calendar, Clock, Users } from 'lucide-react';
+
+const fmt = (n) => {
+  if (n == null) return null;
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000)     return (n / 1_000).toFixed(1)     + 'K';
+  return n.toLocaleString();
+};
 
 const StatBadge = ({ icon: Icon, value, label }) => (
   <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-white/5 border border-white/5 backdrop-blur-sm">
@@ -8,7 +15,7 @@ const StatBadge = ({ icon: Icon, value, label }) => (
       <Icon size={16} className="text-primary-500" />
       <span className="text-xs uppercase tracking-wider font-semibold">{label}</span>
     </div>
-    <span className="text-lg font-bold text-white">{value || 'N/A'}</span>
+    <span className="text-lg font-bold text-white">{value ?? 'N/A'}</span>
   </div>
 );
 
@@ -18,8 +25,14 @@ const VideoCard = ({ platform, data }) => {
   const { input, metrics } = data;
   const isYoutube = platform.toLowerCase() === 'youtube';
 
+  // Show N/A instead of 0 when the platform didn't report the metric
+  const viewsDisplay     = metrics.has_missing_views    ? 'N/A' : metrics.views_formatted;
+  const likesDisplay     = metrics.has_missing_likes    ? 'N/A' : metrics.likes_formatted;
+  const commentsDisplay  = metrics.has_missing_comments ? 'N/A' : metrics.comments_formatted;
+  const followersDisplay = fmt(input.follower_count) ?? 'N/A';
+
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
@@ -27,7 +40,9 @@ const VideoCard = ({ platform, data }) => {
     >
       {/* Platform Badge */}
       <div className={`absolute top-4 right-4 px-3 py-1 text-xs font-bold uppercase rounded-full shadow-lg backdrop-blur-md border ${
-        isYoutube ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-pink-500/20 text-pink-400 border-pink-500/30'
+        isYoutube
+          ? 'bg-red-500/20 text-red-400 border-red-500/30'
+          : 'bg-pink-500/20 text-pink-400 border-pink-500/30'
       }`}>
         {platform}
       </div>
@@ -36,8 +51,8 @@ const VideoCard = ({ platform, data }) => {
       <div className="h-48 shrink-0 relative overflow-hidden bg-dark-900">
         <div className="absolute inset-0 bg-gradient-to-t from-dark-800 to-transparent z-10" />
         {isYoutube ? (
-          <img 
-            src={`https://img.youtube.com/vi/${input.video_id}/maxresdefault.jpg`} 
+          <img
+            src={`https://img.youtube.com/vi/${input.video_id}/maxresdefault.jpg`}
             alt={input.title}
             className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity duration-500"
             onError={(e) => { e.target.style.display = 'none'; }}
@@ -53,6 +68,7 @@ const VideoCard = ({ platform, data }) => {
 
       {/* Stats Body */}
       <div className="p-6 flex-1 flex flex-col">
+
         {/* Engagement Rate Hero */}
         <div className="mb-6 text-center pb-6 border-b border-white/10">
           <p className="text-sm text-gray-400 mb-1">Engagement Rate</p>
@@ -64,14 +80,15 @@ const VideoCard = ({ platform, data }) => {
           </p>
         </div>
 
-        {/* Metrics Grid */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <StatBadge icon={Eye} value={metrics.views_formatted} label="Views" />
-          <StatBadge icon={Heart} value={metrics.likes_formatted} label="Likes" />
-          <StatBadge icon={MessageCircle} value={metrics.comments_formatted} label="Comments" />
+        {/* Metrics Grid — 2×2 */}
+        <div className="grid grid-cols-2 gap-3 mb-6">
+          <StatBadge icon={Eye}           value={viewsDisplay}     label="Views"     />
+          <StatBadge icon={Heart}         value={likesDisplay}     label="Likes"     />
+          <StatBadge icon={MessageCircle} value={commentsDisplay}  label="Comments"  />
+          <StatBadge icon={Users}         value={followersDisplay} label={isYoutube ? "Subscribers" : "Followers"} />
         </div>
 
-        {/* Additional Info */}
+        {/* Footer */}
         <div className="mt-auto flex justify-between text-xs text-gray-500 px-2">
           <div className="flex items-center gap-1">
             <Calendar size={14} />
@@ -79,7 +96,9 @@ const VideoCard = ({ platform, data }) => {
           </div>
           <div className="flex items-center gap-1">
             <Clock size={14} />
-            {input.duration_seconds ? `${Math.floor(input.duration_seconds / 60)}:${(input.duration_seconds % 60).toString().padStart(2, '0')}` : '--:--'}
+            {input.duration_seconds
+              ? `${Math.floor(input.duration_seconds / 60)}:${(input.duration_seconds % 60).toString().padStart(2, '0')}`
+              : '--:--'}
           </div>
         </div>
       </div>

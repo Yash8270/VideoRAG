@@ -6,6 +6,7 @@ All settings are validated at startup via Pydantic Settings.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -13,6 +14,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # ── Google Gemini ───────────────────────────────────────────────────────
     GOOGLE_API_KEY: str
+
+    # ── YouTube Data API v3 ───────────────────────────────────────────────
+    YOUTUBE_API_KEY: Optional[str] = None
 
     # ── LLM / Embedding Models ───────────────────────────────────────────────
     LLM_MODEL: str = "gemini-2.5-flash"

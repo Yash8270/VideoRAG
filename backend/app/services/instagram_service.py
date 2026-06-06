@@ -78,6 +78,7 @@ class InstagramReelData(BaseModel):
     views:              Optional[int]   = Field(None, description="Play / view count")
     likes:              Optional[int]   = Field(None, description="Like count (None if hidden by IG)")
     comments:           Optional[int]   = Field(None, description="Comment count (None if hidden)")
+    follower_count:     Optional[int]   = Field(None, description="Creator's Instagram follower count")
 
     # ── Taxonomy ─────────────────────────────────────────────────────────────
     hashtags:           list[str]       = Field(default_factory=list, description="Hashtags from caption")
@@ -351,9 +352,10 @@ def _build_reel_data(
     creator = creator.lstrip("@")
 
     # ── Engagement ────────────────────────────────────────────────────────────
-    views    = info.get("view_count")   or info.get("play_count")
-    likes    = info.get("like_count")
-    comments = info.get("comment_count")
+    views          = info.get("view_count")   or info.get("play_count")
+    likes          = info.get("like_count")
+    comments       = info.get("comment_count")
+    follower_count = info.get("channel_follower_count")
 
     # ── Hashtags ──────────────────────────────────────────────────────────────
     hashtags = _extract_hashtags(description)
@@ -386,6 +388,7 @@ def _build_reel_data(
         views=views,
         likes=likes,
         comments=comments,
+        follower_count=follower_count,
 
         # Taxonomy
         hashtags=hashtags,
@@ -409,6 +412,7 @@ def _build_reel_data(
             "view_count":    views,
             "like_count":    likes,
             "comment_count": comments,
+            "follower_count": follower_count,
             "ext":           info.get("ext"),
             "format":        info.get("format"),
             "format_id":     info.get("format_id"),

@@ -111,9 +111,10 @@ class VideoAnalyticsInput(BaseModel):
     duration_seconds: Optional[float] = Field(None, description="Duration in seconds")
 
     # Engagement counters — all optional because platforms may hide them
-    views:    Optional[int] = Field(None, ge=0, description="Total views / plays")
-    likes:    Optional[int] = Field(None, ge=0, description="Total likes / hearts")
-    comments: Optional[int] = Field(None, ge=0, description="Total comments")
+    views:          Optional[int] = Field(None, ge=0, description="Total views / plays")
+    likes:          Optional[int] = Field(None, ge=0, description="Total likes / hearts")
+    comments:       Optional[int] = Field(None, ge=0, description="Total comments")
+    follower_count: Optional[int] = Field(None, ge=0, description="Channel/account follower or subscriber count")
 
     @field_validator("views", "likes", "comments", mode="before")
     @classmethod
@@ -621,6 +622,7 @@ def from_youtube(data: "YouTubeVideoData") -> VideoAnalyticsSummary:
         views=data.views,
         likes=data.likes,
         comments=data.comments,
+        follower_count=data.follower_count,
     )
     return compute_analytics(inp)
 
@@ -646,6 +648,7 @@ def from_instagram(data: "InstagramReelData") -> VideoAnalyticsSummary:
         views=data.views,
         likes=data.likes,
         comments=data.comments,
+        follower_count=data.follower_count,
     )
     return compute_analytics(inp)
 
